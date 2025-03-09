@@ -20,6 +20,10 @@
 			"Name": "UAssetBrowser",
 			"Enabled": true,
 			"MarketplaceURL": "com.epicgames.launcher://ue/marketplace/content/648d582688654f7db09939af111c45b5"
+		},
+		{
+			"Name": "GameplayAbilities",
+			"Enabled": true
 		}
 	]
 }
