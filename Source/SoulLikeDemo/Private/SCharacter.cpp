@@ -7,22 +7,26 @@
 #include "GameFramework/Controller.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "MovieSceneTracksComponentTypes.h"
+#include "SWeaponSword.h"
+#include "Chaos/NewtonElasticFEM.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "WorldPartition/ContentBundle/ContentBundleLog.h"
 
 ASCharacter::ASCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
-	WalkSpeed = 600.0f;
+	WalkSpeed = 400.0f;
 
-	SprintSpeed = 1000.0f;
+	SprintSpeed = 700.0f;
 	SprintBufferTime = 0.5f;
 
-	RollDistance = 500.0f;
-	RollDuration = 0.5f;
+	RollDistance = 600.0f;
+	RollDuration = 0.6f;
 
 	LowestAngle = -30.0f;
-	HighestAngle = 30.0f;
+	HighestAngle = 60.0f;
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationRoll = false;
@@ -38,9 +42,16 @@ ASCharacter::ASCharacter()
 	CameraComp->SetupAttachment(SpringArmComp);
 	CameraComp->bUsePawnControlRotation = false;
 
-	bCanSprint = true;
+	// WeaponComp->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, "WeaponSocket");
+
+	bIsWalking = false;
 	bIsSprinting = false;
 	bIsRolling = false;
+	bIsAttacking = false;
+	bCanAttackCombo = true;
+	
+	bCanSprint = true;
+	bCanRoll = true;
 
 	PrimaryActorTick.bCanEverTick = true;
 }
@@ -69,12 +80,13 @@ void ASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ASCharacter::Move);
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &ASCharacter::MoveEnd);
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ASCharacter::Look);
 
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Triggered, this, &ASCharacter::SprintStart);
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &ASCharacter::SprintStop);
 	
-		EnhancedInputComponent->BindAction(RollingAction, ETriggerEvent::Triggered, this, &ASCharacter::Roll);
+		EnhancedInputComponent->BindAction(RollingAction, ETriggerEvent::Triggered, this, &ASCharacter::RollStart);
 
 		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Triggered, this, &ASCharacter::Attack);
 	}
@@ -82,10 +94,12 @@ void ASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 
 void ASCharacter::Move(const FInputActionValue& Value)
 {
-	if (bIsRolling) return;
+	if (bIsRolling || bIsAttacking) return;
 	FVector2D MovementVector = Value.Get<FVector2D>();
 	if (Controller)
 	{
+		bIsWalking = true;
+		
 		const FRotator ControlRotation = Controller->GetControlRotation();
 		const FRotator YawRotation = FRotator(0.0f, ControlRotation.Yaw, 0.0f);
 
@@ -97,6 +111,12 @@ void ASCharacter::Move(const FInputActionValue& Value)
 		AddMovementInput(RightDirection, MovementVector.X);
 	}
 }
+
+void ASCharacter::MoveEnd()
+{
+	bIsWalking = false;
+}
+
 
 void ASCharacter::Look(const FInputActionValue& Value)
 {
@@ -118,7 +138,7 @@ void ASCharacter::Look(const FInputActionValue& Value)
 
 void ASCharacter::SprintStart()
 {
-	if (bIsRolling || !bCanSprint) return;
+	if (bIsRolling || !bCanSprint || bIsAttacking) return;
 	bIsSprinting = true;
 	GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
 }
@@ -126,65 +146,110 @@ void ASCharacter::SprintStart()
 void ASCharacter::SprintStop()
 {
 	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
-	// Sprint buffer
-	GetWorld()->GetTimerManager().SetTimer(SprintBufferTimerHandle, [this]()
-	{
-		bIsSprinting = false;
-
-		GetWorld()->GetTimerManager().ClearTimer(SprintBufferTimerHandle);
-	}, SprintBufferTime, false);
+	bIsSprinting = false;
 }
 
-void ASCharacter::Roll()
+void ASCharacter::ResetRoll()
 {
-	if (!bIsRolling)
+	bCanRoll = true;
+	UE_LOG(LogTemp, Warning, TEXT("ASCharacter::ResetRoll"));
+}
+
+void ASCharacter::RollStart()
+{
+	if (!bIsRolling && bCanRoll && !bIsAttacking)
 	{
 		bIsRolling = true;
-		UE_LOG(LogTemp, Log, TEXT("Roll."));
+		bCanRoll = false;
+		OnRoll.Broadcast();
+		UE_LOG(LogTemp, Log, TEXT("Roll. %s"), *GetActorLocation().ToString());
 		
 		FVector Velocity = GetVelocity();
 		FVector RollDirection;
-		if (Velocity.Size() > 0.0f) {
+		if (Velocity.Size() > 0.1f) {
 			RollDirection = Velocity.GetSafeNormal();
 		}
 		else {
 			RollDirection = GetActorForwardVector();
 		}
-		GetWorld()->GetTimerManager().SetTimer(UpdateRollTimerHandle, [this, RollDirection]() {UpdateRollPosition(RollDirection); }, RollDuration / 50.f, true);
 
-		GetWorld()->GetTimerManager().SetTimer(RollTimerHandle, this, &ASCharacter::EndRoll, RollDuration, false);
+		float RollStartTime = GetWorld()->GetTimeSeconds();
+		FVector RollStartLocation = GetActorLocation();
+		GetWorld()->GetTimerManager().SetTimer(
+			UpdateRollTimerHandle,
+			[this, RollDirection, RollStartLocation, RollStartTime]()
+			{
+				RollUpdate(RollDirection, RollStartLocation, RollStartTime);
+			},
+			RollDuration / 60.f,
+			true
+			);
+
+		GetWorld()->GetTimerManager().SetTimer(
+			RollTimerHandle,
+			this,
+			&ASCharacter::RollEnd,
+			RollDuration - 0.2f,
+			false
+			);
+
+		FTimerHandle ResetRollTimerHandle;
+		GetWorld()->GetTimerManager().SetTimer(
+			ResetRollTimerHandle,
+			this,
+			&ASCharacter::ResetRoll,
+			RollDuration,
+			false
+		);
 	}
 }
 
-void ASCharacter::UpdateRollPosition(FVector RollDirection)
+void ASCharacter::RollUpdate(FVector RollDirection, FVector StartLocation, double RollStartTime)
 {
 	if (bIsRolling)
 	{
 		FHitResult HitResult;
 		FCollisionQueryParams CollisionParams;
-		FVector StartLocation = GetActorLocation();
-		FVector EndLocation = StartLocation + RollDirection * RollDistance * RollDuration / 50.f;
-		bool bIsHit = GetWorld()->LineTraceSingleByChannel(HitResult, StartLocation, EndLocation, ECC_Visibility, CollisionParams);
+		CollisionParams.AddIgnoredActor(this);
+		
+		float ElapsedTime = GetWorld()->GetTimeSeconds() - RollStartTime;
+		float Progress = FMath::Clamp(ElapsedTime / RollDuration, 0.f, 1.f);
+		
+		const float DistanceThisFrame = RollDistance * Progress;
+		const FVector EndLocation = StartLocation + RollDirection * DistanceThisFrame;
+
+		bool bIsHit = GetWorld()->LineTraceSingleByChannel(
+		    HitResult,
+		    GetActorLocation(),
+		    EndLocation,
+		    ECC_Visibility,
+		    CollisionParams
+		);
 		// If it is obligated
-		if (!bIsHit) return;
+		if (bIsHit) return;
 		SetActorLocation(EndLocation, true);
+		// UE_LOG(LogTemp, Log, TEXT("%s"), *EndLocation.ToString());
 	}
 }
 
-void ASCharacter::EndRoll()
+void ASCharacter::RollEnd()
 {
-	FTimerHandle TimerHandle;
-	GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
-	{
-		bIsRolling = false;
-		UE_LOG(LogTemp, Log, TEXT("EndRoll."));
+	bIsRolling = false;
+	UE_LOG(LogTemp, Log, TEXT("EndRoll. %s"), *GetActorLocation().ToString());
 
-		GetWorld()->GetTimerManager().ClearTimer(RollTimerHandle);
-		GetWorld()->GetTimerManager().ClearTimer(UpdateRollTimerHandle);
-	}, 0.3f, false);
+	GetWorld()->GetTimerManager().ClearTimer(RollTimerHandle);
+	GetWorld()->GetTimerManager().ClearTimer(UpdateRollTimerHandle);
+	
 }
 
 void ASCharacter::Attack()
 {
+	if (bCanAttackCombo && !bIsRolling)
+	{
+		bIsAttacking = true;
+		bCanAttackCombo = false;
+		SprintStop();
+		OnAttack.Broadcast();
+		UE_LOG(LogTemp, Log, TEXT("Attack"));
+	}
 }
-

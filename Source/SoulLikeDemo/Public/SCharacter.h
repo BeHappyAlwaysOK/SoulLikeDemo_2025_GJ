@@ -7,6 +7,9 @@
 #include "InputActionValue.h"
 #include "SCharacter.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAttackDelegate);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRollDelegate);
+
 UCLASS()
 class SOULLIKEDEMO_API ASCharacter : public ACharacter
 {
@@ -60,6 +63,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	class UInputAction* AttackAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
+	class ASWeaponSword* WeaponComp;
 	
 	virtual void BeginPlay() override;
 
@@ -72,25 +78,41 @@ public:
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 
+	void MoveEnd();
+
 	UPROPERTY(BlueprintReadOnly)
-	bool bIsMoving;
-	UPROPERTY(BlueprintReadOnly)
-	bool bIsAttacking;
+	bool bIsWalking;
 	UPROPERTY(BlueprintReadOnly)
 	bool bIsSprinting;
 	UPROPERTY(BlueprintReadOnly)
 	bool bIsRolling;
-
-	FTimerHandle SprintBufferTimerHandle;
+	
 	void SprintStart();
 	void SprintStop();
 	bool bCanSprint;
 
+	bool bCanRoll;
 	FTimerHandle RollTimerHandle;
 	FTimerHandle UpdateRollTimerHandle;
-	void Roll();
-	void UpdateRollPosition(FVector RollDirection);
-	void EndRoll();
+	UPROPERTY(BlueprintAssignable)
+	FOnRollDelegate OnRoll;
+	void ResetRoll();
+	void RollStart();
+	void RollUpdate(FVector RollDirection, FVector StartLocation, double RollStartTime);
+	void RollEnd();
 
+
+	UPROPERTY(BlueprintReadWrite)
+	bool bIsAttacking;
+	UPROPERTY(BlueprintReadWrite)
+	bool bCanAttackCombo;
+	UPROPERTY(BlueprintAssignable)
+	FOnAttackDelegate OnAttack;
+
+	UFUNCTION(BlueprintCallable)
 	void Attack();
+
+private:
+	FHitResult RollHitResult;
+	bool bHitObstacleDuringRoll;
 };
