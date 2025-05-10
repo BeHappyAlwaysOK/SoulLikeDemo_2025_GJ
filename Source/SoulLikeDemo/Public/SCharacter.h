@@ -9,6 +9,7 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAttackDelegate);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRollDelegate);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHitDelegate, float, Damage, float, Strength);
 
 UCLASS()
 class SOULLIKEDEMO_API ASCharacter : public ACharacter
@@ -63,14 +64,14 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	class UInputAction* AttackAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
-	class ASWeaponSword* WeaponComp;
 	
 	virtual void BeginPlay() override;
 
-public:	
-
+public:
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	class USAttributeComponent* AttributeComp;
+	
 	virtual void Tick(float DeltaTime) override;
 	
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -111,6 +112,17 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void Attack();
+
+	UPROPERTY(BlueprintAssignable)
+	FOnHitDelegate OnHit;
+
+	UPROPERTY(BlueprintReadWrite)
+	bool bIsHitting;
+	UFUNCTION(BlueprintCallable)
+	void Hit(float Damage, float Strength);
+
+	UFUNCTION()
+	void Death();
 
 private:
 	FHitResult RollHitResult;

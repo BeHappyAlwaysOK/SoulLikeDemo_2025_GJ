@@ -12,6 +12,7 @@
 #include "Chaos/NewtonElasticFEM.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "WorldPartition/ContentBundle/ContentBundleLog.h"
+#include "SAttributeComponent.h"
 
 ASCharacter::ASCharacter()
 {
@@ -42,8 +43,8 @@ ASCharacter::ASCharacter()
 	CameraComp->SetupAttachment(SpringArmComp);
 	CameraComp->bUsePawnControlRotation = false;
 
-	// WeaponComp->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale, "WeaponSocket");
-
+	AttributeComp = CreateDefaultSubobject<USAttributeComponent>(TEXT("Attribute"));
+	
 	bIsWalking = false;
 	bIsSprinting = false;
 	bIsRolling = false;
@@ -67,6 +68,8 @@ void ASCharacter::BeginPlay()
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
 		}
 	}
+
+	AttributeComp->OnDeath.AddDynamic(this, &ASCharacter::Death);
 }
 
 void ASCharacter::Tick(float DeltaTime)
@@ -94,7 +97,7 @@ void ASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 
 void ASCharacter::Move(const FInputActionValue& Value)
 {
-	if (bIsRolling || bIsAttacking) return;
+	if (bIsRolling || bIsAttacking || bIsHitting) return;
 	FVector2D MovementVector = Value.Get<FVector2D>();
 	if (Controller)
 	{
@@ -138,7 +141,7 @@ void ASCharacter::Look(const FInputActionValue& Value)
 
 void ASCharacter::SprintStart()
 {
-	if (bIsRolling || !bCanSprint || bIsAttacking) return;
+	if (bIsRolling || !bCanSprint || bIsAttacking || bIsHitting) return;
 	bIsSprinting = true;
 	GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
 }
@@ -157,7 +160,7 @@ void ASCharacter::ResetRoll()
 
 void ASCharacter::RollStart()
 {
-	if (!bIsRolling && bCanRoll && !bIsAttacking)
+	if (!bIsRolling && bCanRoll && !bIsAttacking && !bIsHitting)
 	{
 		bIsRolling = true;
 		bCanRoll = false;
@@ -244,7 +247,7 @@ void ASCharacter::RollEnd()
 
 void ASCharacter::Attack()
 {
-	if (bCanAttackCombo && !bIsRolling)
+	if (bCanAttackCombo && !bIsRolling && !bIsHitting)
 	{
 		bIsAttacking = true;
 		bCanAttackCombo = false;
@@ -252,4 +255,16 @@ void ASCharacter::Attack()
 		OnAttack.Broadcast();
 		UE_LOG(LogTemp, Log, TEXT("Attack"));
 	}
+}
+
+void ASCharacter::Hit(float Damage, float Strength)
+{
+	OnHit.Broadcast(Damage, Strength);
+	AttributeComp->DecreaseHealth(Damage);
+	bIsHitting = true;
+}
+
+void ASCharacter::Death()
+{
+	UE_LOG(LogTemp, Log, TEXT("Death"));
 }

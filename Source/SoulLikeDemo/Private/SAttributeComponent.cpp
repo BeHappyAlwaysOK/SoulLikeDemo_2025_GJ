@@ -2,33 +2,42 @@
 
 
 #include "SAttributeComponent.h"
+#include "SPlayerAttributeWidget.h"
+#include "Blueprint/UserWidget.h"
 
 // Sets default values for this component's properties
 USAttributeComponent::USAttributeComponent()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
-	PrimaryComponentTick.bCanEverTick = true;
+	MaxHealth = 100;
+	Health = MaxHealth;
 
-	// ...
+	Toughness = 5;
 }
 
-
-// Called when the game starts
 void USAttributeComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
-	// ...
-	
+	if (PlayerAttributeWidgetInstance == nullptr && ensure(PlayerAttributeWidgetClass))
+	{
+		PlayerAttributeWidgetInstance = CreateWidget<USPlayerAttributeWidget>(GetWorld(), PlayerAttributeWidgetClass);
+		if (PlayerAttributeWidgetInstance)
+		{
+			PlayerAttributeWidgetInstance->AddToViewport();
+			UpdatePlayerStatus();
+		}
+	}
 }
 
-
-// Called every frame
-void USAttributeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void USAttributeComponent::DecreaseHealth(float Value)
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	// ...
+	Health = FMath::Clamp(Health - Value, 0, MaxHealth);
+	if (Health <= 0.0f)
+	{
+		OnDeath.Broadcast();
+	}
 }
 
+void USAttributeComponent::UpdatePlayerStatus() const
+{
+	PlayerAttributeWidgetInstance->UpdateHealthBar(Health / MaxHealth);
+}

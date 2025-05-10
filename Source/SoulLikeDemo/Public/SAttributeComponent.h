@@ -6,6 +6,7 @@
 #include "Components/ActorComponent.h"
 #include "SAttributeComponent.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDeathDelegate);
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class SOULLIKEDEMO_API USAttributeComponent : public UActorComponent
@@ -13,16 +14,35 @@ class SOULLIKEDEMO_API USAttributeComponent : public UActorComponent
 	GENERATED_BODY()
 
 public:	
-	// Sets default values for this component's properties
+
 	USAttributeComponent();
-
+	
 protected:
-	// Called when the game starts
-	virtual void BeginPlay() override;
 
-public:	
-	// Called every frame
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	UPROPERTY(EditDefaultsOnly, Category="Attribute")
+	float Health;
 
-		
+	UPROPERTY(EditDefaultsOnly, Category="Attribute")
+	int MaxHealth;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Attribute")
+	float Toughness;
+
+	UPROPERTY()
+	class USPlayerAttributeWidget* PlayerAttributeWidgetInstance;
+	
+	UPROPERTY(EditDefaultsOnly, Category="UI")
+	TSubclassOf<USPlayerAttributeWidget> PlayerAttributeWidgetClass;
+
+	void BeginPlay() override;
+
+public:
+	
+	UPROPERTY(BlueprintAssignable)
+	FOnDeathDelegate OnDeath;
+	
+	void DecreaseHealth(float Value);
+	
+	void UpdatePlayerStatus() const;
+
 };
