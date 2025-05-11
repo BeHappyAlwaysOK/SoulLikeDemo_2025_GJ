@@ -13,6 +13,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "WorldPartition/ContentBundle/ContentBundleLog.h"
 #include "SAttributeComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 ASCharacter::ASCharacter()
 {
@@ -70,6 +71,7 @@ void ASCharacter::BeginPlay()
 	}
 
 	AttributeComp->OnDeath.AddDynamic(this, &ASCharacter::Death);
+
 }
 
 void ASCharacter::Tick(float DeltaTime)
@@ -259,12 +261,13 @@ void ASCharacter::Attack()
 
 void ASCharacter::Hit(float Damage, float Strength)
 {
+	bIsHitting = true;
 	OnHit.Broadcast(Damage, Strength);
 	AttributeComp->DecreaseHealth(Damage);
-	bIsHitting = true;
 }
 
 void ASCharacter::Death()
 {
 	UE_LOG(LogTemp, Log, TEXT("Death"));
+	UGameplayStatics::OpenLevel(GetWorld(), TEXT("L_Map1"));
 }

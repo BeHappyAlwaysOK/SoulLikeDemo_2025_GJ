@@ -120,7 +120,7 @@ public:
 	bool bIsHitting;
 	UFUNCTION(BlueprintCallable)
 	void Hit(float Damage, float Strength);
-
+	
 	UFUNCTION()
 	void Death();
 

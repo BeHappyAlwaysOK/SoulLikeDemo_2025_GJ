@@ -31,6 +31,7 @@ void USAttributeComponent::BeginPlay()
 void USAttributeComponent::DecreaseHealth(float Value)
 {
 	Health = FMath::Clamp(Health - Value, 0, MaxHealth);
+	UpdatePlayerStatus();
 	if (Health <= 0.0f)
 	{
 		OnDeath.Broadcast();
